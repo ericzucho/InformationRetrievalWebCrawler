@@ -7,7 +7,7 @@ if __name__ == "__main__":
 
     from crawler import WebCrawler
     import re
-    fmoore_url_regex = re.compile('https\:\/\/lyle\.smu\.edu\/\~fmoore.*(htm|txt|html|\/)$')
+    fmoore_url_regex = re.compile('https?\:\/\/lyle\.smu\.edu\/\~fmoore.*(htm|txt|html|\/)$')
 
     w = WebCrawler(fmoore_url_regex)
     w.start_crawling(['https://lyle.smu.edu/~fmoore/'],100)

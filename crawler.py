@@ -1,4 +1,5 @@
 import re
+import string
 
 
 class Tag:
@@ -179,14 +180,33 @@ import socket
 socket.setdefaulttimeout(10)
 import httplib
 import robotparser
+import hashlib
+from bs4 import BeautifulSoup
+from porter import PorterStemmer
 
+class UrlData(object):
+    def __init__(self,doc_id_counter):
+        self.status = "OtherDocumentFormat"
+        self.title = "NONE"
+        self.page_hash = ""
+        self.doc_id = doc_id_counter
 
 def normalize_link(link,current_page):
-    if not re.match("http(s)?\:\/\/", link):
-        return re.search("(.*\/)",current_page).group(0) + link
-    else:
-        return link
+    new_link = link
+    if not re.match("http(s)?\:\/\/", new_link):
+        new_link =  re.search("(.*\/)",current_page).group(0) + new_link
+    if re.match("http\:\/\/", new_link):
+        new_link = re.sub(r'(http)', r'\1s', new_link)
+    if re.match(".*\.\.\/.*", new_link):
+        new_link = re.sub(r'[^\/]*\/\.\.\/', '', new_link)
+    return new_link
 
+def visible(element):
+    if element.parent.name in ['style', 'script', '[document]', 'head', 'title']:
+        return False
+    elif re.match('<!--.*-->', str(element.encode('utf-8'))):
+        return False
+    return True
 
 def denormalize_link(url):
     return re.search("\~fmoore(.*)",url).group(1)
@@ -195,17 +215,21 @@ def denormalize_link(url):
 class WebCrawler:
     """A simple web crawler"""
       
-    link_dict = {};
-    amount_of_pages_remaining = 9999;
+    link_dict = {}
+    amount_of_pages_remaining = 9999
     #filter_list = [];
-    parser = 0;
-    re_compiled_obj = 0;
+    parser = 0
+    re_compiled_obj = 0
     image_links = 0
-    
+    my_url_dict = {}
+    vocabulary_dict = {}
+    doc_id_counter = 0
+    porter_stemmer = PorterStemmer()
+
     class PageInfo:
         """ i store info about a webpage here """
-        has_been_scraped = 0;
-        word_dict = {};
+        has_been_scraped = 0
+        word_dict = {}
                  
           
     def __init__(self,re_compiled_obj):      
@@ -238,9 +262,23 @@ class WebCrawler:
         enabled filter strings
         then put the url in the dictionary """
         
-        img_pattern = re.compile(".*\.(jpg|jpeg|png)$")
+        img_pattern = re.compile(".*\.(jpg|jpeg|png|tif|gif)$", re.IGNORECASE)
+        not_outgoing_pattern = re.compile("https?\:\/\/lyle\.smu\.edu\/\~fmoore.*$", re.IGNORECASE)
+        crawleable_document_pattern = re.compile(".*(htm|txt|html|\/)$", re.IGNORECASE)
         if img_pattern.match(url):
             self.image_links += 1
+        if url not in self.my_url_dict:
+            self.my_url_dict[url] = UrlData(self.doc_id_counter)
+            self.doc_id_counter+= 1
+            if not not_outgoing_pattern.match(url):
+                self.my_url_dict[url].status = "OutgoingLink"
+            else:
+                if img_pattern.match(url):
+                    self.my_url_dict[url].status = "ImageLink"
+                else:
+                    if crawleable_document_pattern.match(url):
+                        self.my_url_dict[url].status = "CrawleableDocument"
+
         match = self.re_compiled_obj.search(url)
         #print "match = {}".format(match)
         return match
@@ -349,14 +387,36 @@ class WebCrawler:
             for url in urls:
                 if not (robots_parser.can_fetch("*", url) and robots_parser.can_fetch("*", denormalize_link(url))):
                     print "access to {} is forbidden by the robots.txt".format(url)
+                    if url in self.my_url_dict:
+                        self.my_url_dict[url].status = "ForbiddenRobots"
                     continue
                 print "trying to get {} over the internet".format(url)
                 page_str = self.get_page(url)
                 print "done getting {} over the internet.".format(url)
-                print "TITLE: {}".format(self.get_page_title(page_str))
+                page_title = self.get_page_title(page_str)
+                page_hash = hashlib.md5(page_str.encode('utf-8')).hexdigest()
+                duplicate_found = False
+                for single_url,url_info in self.my_url_dict.items():
+                    if url_info.page_hash == page_hash:
+                        duplicate_found = True
+                        print "Document is an exact duplicate of {}".format(single_url)
+                        break
+                if duplicate_found:
+                    self.my_url_dict[url].status = "Duplicate"
+                else:
+                    self.my_url_dict[url].page_hash = page_hash
+                if page_title == "404 Not Found":
+                    self.my_url_dict[url].status = "BrokenLink"
+                else:
+                    self.my_url_dict[url].title = page_title
+                print "TITLE: {}".format(page_title)
                 self.link_dict[url].word_dict = self.save_page_text(page_str)
                 d = self.save_all_links_on_page(page_str,url)
                 self.link_dict[url].has_been_scraped = 1
+
+                self.count_words(page_str,url)
+
+
                 # d contains all the links found on the current page
                 self.save_all_links_recursive(d,robots_parser)
 
@@ -369,6 +429,8 @@ class WebCrawler:
         for page in seed_pages:           
             self.link_dict[page] = self.PageInfo()
             d[page] = self.PageInfo()
+            self.my_url_dict[page] = UrlData(self.doc_id_counter)
+            self.doc_id_counter += 1
         self.amount_of_pages_remaining = amount_of_pages
         rp = robotparser.RobotFileParser()
         rp.set_url("https://lyle.smu.edu/~fmoore/robots.txt")
@@ -388,3 +450,17 @@ class WebCrawler:
                 word = d.keys()[j]
                 count = d.values()[j]
                 print '{} was found {} times'.format(word,count)
+
+    def count_words(self,page_str,url):
+        soup = BeautifulSoup(page_str, "lxml")
+        data = soup.findAll(text=True)
+        all_text = filter(visible, data)
+        doc_id = self.my_url_dict[url].doc_id
+        for line in all_text:
+            for word in line.replace("/"," ").split():
+                word_without_punctuation = word.strip(string.punctuation).replace(" ", "")
+                stemmed_word = self.porter_stemmer.stem(word_without_punctuation,0,len(word_without_punctuation)-1).lower()
+                if stemmed_word != "":
+                    if stemmed_word not in self.vocabulary_dict:
+                        self.vocabulary_dict[stemmed_word] = []
+                    self.vocabulary_dict[stemmed_word].append(doc_id)
