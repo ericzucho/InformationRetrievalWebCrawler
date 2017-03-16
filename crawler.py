@@ -224,6 +224,7 @@ class WebCrawler:
     my_url_dict = {}
     vocabulary_dict = {}
     doc_id_counter = 0
+    stop_words_list = []
     porter_stemmer = PorterStemmer()
 
     class PageInfo:
@@ -354,8 +355,8 @@ class WebCrawler:
                     num_pages_filtered = num_pages_filtered + 1
                 offset = offset + 1
             i = i + 1
-        print "{} out of {} links were filtered".format(num_pages_filtered,i)
-        print "{} out of {} links were duplicates".format(num_duplicate_pages,i)
+        print "{} out of {} links were filtered (non-crawleable)".format(num_pages_filtered,i)
+        print "{} out of {} links refered to URLs already seen".format(num_duplicate_pages,i)
         #print "{} links are being returned from save_all_links".format(len(d))
         return d
   
@@ -420,7 +421,7 @@ class WebCrawler:
                 # d contains all the links found on the current page
                 self.save_all_links_recursive(d,robots_parser)
 
-    def start_crawling(self,seed_pages,amount_of_pages):
+    def start_crawling(self,seed_pages,amount_of_pages,stop_words_list = []):
         """ User calls this function to start crawling the web """
         d = {}
         self.link_dict.clear()
@@ -432,6 +433,7 @@ class WebCrawler:
             self.my_url_dict[page] = UrlData(self.doc_id_counter)
             self.doc_id_counter += 1
         self.amount_of_pages_remaining = amount_of_pages
+        self.stop_words_list = stop_words_list
         rp = robotparser.RobotFileParser()
         rp.set_url("https://lyle.smu.edu/~fmoore/robots.txt")
         rp.read()
@@ -458,9 +460,10 @@ class WebCrawler:
         doc_id = self.my_url_dict[url].doc_id
         for line in all_text:
             for word in line.replace("/"," ").split():
-                word_without_punctuation = word.strip(string.punctuation).replace(" ", "")
-                stemmed_word = self.porter_stemmer.stem(word_without_punctuation,0,len(word_without_punctuation)-1).lower()
-                if stemmed_word != "":
-                    if stemmed_word not in self.vocabulary_dict:
-                        self.vocabulary_dict[stemmed_word] = []
-                    self.vocabulary_dict[stemmed_word].append(doc_id)
+                word_without_punctuation = word.strip(string.punctuation).replace(" ", "").lower()
+                if word_without_punctuation not in self.stop_words_list:
+                    stemmed_word = self.porter_stemmer.stem(word_without_punctuation,0,len(word_without_punctuation)-1)
+                    if stemmed_word != "":
+                        if stemmed_word not in self.vocabulary_dict:
+                            self.vocabulary_dict[stemmed_word] = []
+                        self.vocabulary_dict[stemmed_word].append(doc_id)
