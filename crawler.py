@@ -193,6 +193,10 @@ class UrlData(object):
 
 def normalize_link(link,current_page):
     new_link = link
+    if re.match("\'.*\'", new_link):
+        new_link = re.sub(r'\'(.*)\'', r'\1', new_link)
+    if re.match("\".*\"", new_link):
+        new_link = re.sub(r'\"(.*)\"', r'\1', new_link)
     if not re.match("http(s)?\:\/\/", new_link):
         new_link =  re.search("(.*\/)",current_page).group(0) + new_link
     if re.match("http\:\/\/", new_link):
@@ -335,10 +339,10 @@ class WebCrawler:
         while offset != -1:
             if i == limit:
                 break
-            offset = page_str.find('<a href="',offset)
+            offset = page_str.lower().find('<a href=',offset)
             if offset != -1:
-                start = page_str.find('"', offset)
-                end = page_str.find('"',start+1)
+                start = offset + 7
+                end = page_str.find('>',start+1)
                 link = page_str[start+1:end]
                 # don't just save all the links
                 # filter the links that match specified criteria
