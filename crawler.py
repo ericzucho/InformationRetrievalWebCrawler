@@ -190,6 +190,7 @@ class UrlData(object):
         self.title = "NONE"
         self.page_hash = ""
         self.doc_id = doc_id_counter
+        self.summary = ""
 
 def normalize_link(link,current_page):
     new_link = link
@@ -227,6 +228,7 @@ class WebCrawler:
     image_links = 0
     my_url_dict = {}
     vocabulary_dict = {}
+    title_vocabulary_dict = {}
     doc_id_counter = 0
     stop_words_list = []
     porter_stemmer = PorterStemmer()
@@ -269,7 +271,7 @@ class WebCrawler:
         
         img_pattern = re.compile(".*\.(jpg|jpeg|png|tif|gif)$", re.IGNORECASE)
         not_outgoing_pattern = re.compile("https?\:\/\/lyle\.smu\.edu\/\~fmoore.*$", re.IGNORECASE)
-        crawleable_document_pattern = re.compile(".*(htm|txt|html|\/)$", re.IGNORECASE)
+        crawleable_document_pattern = re.compile(".*(htm|txt|html|php|\/)$", re.IGNORECASE)
         if img_pattern.match(url):
             self.image_links += 1
         if url not in self.my_url_dict:
@@ -397,9 +399,10 @@ class WebCrawler:
                     continue
                 print "trying to get {} over the internet".format(url)
                 page_str = self.get_page(url)
+                re.sub(r'[^\x00-\x7F]+',' ', page_str)
                 print "done getting {} over the internet.".format(url)
                 page_title = self.get_page_title(page_str)
-                page_hash = hashlib.md5(page_str.encode('utf-8')).hexdigest()
+                page_hash = hashlib.md5(page_str.decode('utf-8','ignore').encode('utf-8','ignore')).hexdigest()
                 duplicate_found = False
                 for single_url,url_info in self.my_url_dict.items():
                     if url_info.page_hash == page_hash:
@@ -458,10 +461,12 @@ class WebCrawler:
                 print '{} was found {} times'.format(word,count)
 
     def count_words(self,page_str,url):
+        summary_words_remaining = 20
         soup = BeautifulSoup(page_str, "lxml")
         data = soup.findAll(text=True)
         all_text = filter(visible, data)
         doc_id = self.my_url_dict[url].doc_id
+        page_title = self.get_page_title(page_str)
         for line in all_text:
             for word in line.replace("/"," ").split():
                 word_without_punctuation = word.strip(string.punctuation).replace(" ", "").lower()
@@ -471,3 +476,17 @@ class WebCrawler:
                         if stemmed_word not in self.vocabulary_dict:
                             self.vocabulary_dict[stemmed_word] = []
                         self.vocabulary_dict[stemmed_word].append(doc_id)
+                        if summary_words_remaining > 0:
+                            self.my_url_dict[url].summary += stemmed_word + " "
+                            summary_words_remaining-=1
+
+        if page_title != "" and page_title != "404 Not Found":
+            for word in page_title.replace("/"," ").split():
+                word_without_punctuation = word.strip(string.punctuation).replace(" ", "").lower()
+                if word_without_punctuation not in self.stop_words_list:
+                    stemmed_word = self.porter_stemmer.stem(word_without_punctuation,0,len(word_without_punctuation)-1)
+                    if stemmed_word != "":
+                        if stemmed_word not in self.title_vocabulary_dict:
+                            self.title_vocabulary_dict[stemmed_word] = []
+                        self.title_vocabulary_dict[stemmed_word].append(doc_id)
+
