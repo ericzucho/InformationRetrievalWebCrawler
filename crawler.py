@@ -192,6 +192,8 @@ class UrlData(object):
         self.doc_id = doc_id_counter
         self.summary = ""
 
+
+
 def normalize_link(link,current_page):
     new_link = link
     if re.match("\'.*\'", new_link):
@@ -243,6 +245,12 @@ class WebCrawler:
         #self.filter_list.append(self.Filter(1,'.cnn.'))
         self.parser = MyHTMLParser()
         self.re_compiled_obj = re_compiled_obj
+
+    def get_url_object_by_id(self,id):
+        for url,object in self.my_url_dict.items():
+            if object.doc_id == id:
+                return url,object
+        return None,None
           
     def get_page(self,url):
         """ loads a webpage into a string """
@@ -409,12 +417,17 @@ class WebCrawler:
                         duplicate_found = True
                         print "Document is an exact duplicate of {}".format(single_url)
                         break
+
+                use_in_dict = True
+
                 if duplicate_found:
                     self.my_url_dict[url].status = "Duplicate"
+                    use_in_dict = False
                 else:
                     self.my_url_dict[url].page_hash = page_hash
                 if page_title == "404 Not Found":
                     self.my_url_dict[url].status = "BrokenLink"
+                    use_in_dict = False
                 else:
                     self.my_url_dict[url].title = page_title
                 print "TITLE: {}".format(page_title)
@@ -422,7 +435,8 @@ class WebCrawler:
                 d = self.save_all_links_on_page(page_str,url)
                 self.link_dict[url].has_been_scraped = 1
 
-                self.count_words(page_str,url)
+                if use_in_dict:
+                    self.count_words(page_str,url)
 
 
                 # d contains all the links found on the current page
