@@ -11,7 +11,7 @@ Used software:
 -> Libraries: BeautifulSoup, robotparser, hashlib, httplib, socket, urllib, stop_words, re.
 
 Installation:
--> Download all files.
+-> Uncompress tar file.
 -> Activate virtual environment. On Linux machine (Ubuntu):
    source eric_crawler_virtualenv/bin/activate
 

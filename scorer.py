@@ -7,7 +7,7 @@ from porter import PorterStemmer
 
 class Scorer():
 
-    def score_query(self,query,word_matrix,normalized_matrix,stop_words_list):
+    def score_query(self,query,word_matrix,normalized_matrix,stop_words_list,title_vocabulary_dict):
         porter_stemmer = PorterStemmer()
         square_sum = 0
         words = {}
@@ -31,10 +31,15 @@ class Scorer():
                 words[word]['normalized'] = 0
                 words[word]['weight'] = 0
         aggregate_scores = {}
+        title_addition_performed = []
         for word,elements in words.items():
             if word in normalized_matrix:
                 for doc_id,doc_weight in normalized_matrix[word].items():
                     if doc_id not in aggregate_scores:
                         aggregate_scores[doc_id] = 0
                     aggregate_scores[doc_id] += doc_weight * elements['weight']
+                    if word in title_vocabulary_dict:
+                        if doc_id in title_vocabulary_dict[word] and doc_id not in title_addition_performed:
+                            aggregate_scores[doc_id] += 0.5
+                            title_addition_performed.append(doc_id)
         return aggregate_scores
